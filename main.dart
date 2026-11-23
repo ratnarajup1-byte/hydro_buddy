@@ -477,22 +477,40 @@ class _HydrationHomePageState extends State<HydrationHomePage> {
               ],
             ),
             const SizedBox(height: 8),
-            Card(
-              elevation: 0,
-              color: _reminderOn ? Colors.orange.shade50 : Colors.grey.shade100,
+                        Card(
+              color: Colors.blue.shade50,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Icon(
-                          _reminderOn ? Icons.alarm_on : Icons.alarm_off,
-                          color: _reminderOn ? Colors.orange.shade800 : Colors.grey,
+                        Text(
+                          _dailyIdeas[_tipIndex]['category']!,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
                         ),
-                        const SizedBox(width: 8),
-                                    const Text(
+                        TextButton(
+                          onPressed: _nextTip,
+                          child: const Text('Next Idea →'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _dailyIdeas[_tipIndex]['tip']!,
+                      style: const TextStyle(fontSize: 14, height: 1.4),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            const Text(
               'General wellness & nutrition tips only — not medical advice.',
               style: TextStyle(fontSize: 12, color: Colors.grey),
               textAlign: TextAlign.center,
@@ -503,3 +521,4 @@ class _HydrationHomePageState extends State<HydrationHomePage> {
     );
   }
 }
+
