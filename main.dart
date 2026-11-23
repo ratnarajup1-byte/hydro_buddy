@@ -316,4 +316,116 @@ class _HydrationHomePageState extends State<HydrationHomePage> {
               ),
             ),
             const SizedBox(height: 16),
-            if (goalReached)
+                        if (goalReached)
+              Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade100,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  '🎉 Daily Target Completed!',
+                  style: TextStyle(
+                    color: Colors.green,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                SizedBox(
+                  width: 175,
+                  height: 175,
+                  child: CircularProgressIndicator(
+                    value: progress,
+                    strokeWidth: 14,
+                    color: goalReached ? Colors.green : Colors.blue,
+                    backgroundColor: Colors.blue.shade100,
+                  ),
+                ),
+                Column(
+                  children: [
+                    Text(
+                      '$percentage%',
+                      style: TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                        color: goalReached ? Colors.green.shade700 : Colors.black,
+                      ),
+                    ),
+                    Text(
+                      '$_currentWater / $_dailyGoal ml',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: () => _addWater(250),
+                  icon: const Icon(Icons.local_drink),
+                  label: const Text('+250 ml'),
+                ),
+                const SizedBox(width: 16),
+                ElevatedButton.icon(
+                  onPressed: () => _addWater(500),
+                  icon: const Icon(Icons.water_drop),
+                  label: const Text('+500 ml'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Card(
+              color: Colors.blue.shade50,
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          _dailyIdeas[_tipIndex]['category']!,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: _nextTip,
+                          child: const Text('Next Idea →'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _dailyIdeas[_tipIndex]['tip']!,
+                      style: const TextStyle(fontSize: 14, height: 1.4),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'General wellness & nutrition tips only — not medical advice.',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
