@@ -1,0 +1,21 @@
+name: Build Android APK
+on: [push, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+      - name: Create fresh Flutter project and build APK
+        run: |
+          flutter create hydro_buddy_app
+          cp main.dart hydro_buddy_app/lib/main.dart
+          cd hydro_buddy_app
+          flutter build apk --debug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hydro-buddy-apk
+          path: hydro_buddy_app/build/app/outputs/flutter-apk/app-debug.apk
