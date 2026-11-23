@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() => runApp(const HydroBuddyApp());
 
@@ -31,11 +33,13 @@ class HydrationHomePage extends StatefulWidget {
 class _HydrationHomePageState extends State<HydrationHomePage> {
   String _userName = 'Friend';
   int _currentWater = 0;
-  final int _dailyGoal = 2500;
+  int _dailyGoal = 2500;
+  int _reminderMinutes = 60; // Default: 60 mins (1 hour)
   int _tipIndex = 0;
   bool _celebratedToday = false;
   bool _reminderOn = false;
   Timer? _reminderTimer;
+  Map<String, int> _historyMap = {};
 
   final List<Map<String, String>> _dailyIdeas = [
     {
@@ -61,24 +65,94 @@ class _HydrationHomePageState extends State<HydrationHomePage> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _loadSavedData();
+  }
+
+  String _todayKey() {
+    final now = DateTime.now();
+    return '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+  }
+
+  String _formatIntervalLabel(int mins) {
+    if (mins == 30) return 'Every 30 mins';
+    if (mins == 60) return 'Every 1 hr';
+    return 'Every ${mins ~/ 60} hrs';
+  }
+
+  Future<void> _loadSavedData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedName = prefs.getString('userName') ?? 'Friend';
+    final savedGoal = prefs.getInt('dailyGoal') ?? 2500;
+    final savedMinutes = prefs.getInt('reminderMinutes') ?? 60;
+    final rawHistory = prefs.getString('historyMap');
+
+    Map<String, int> loadedHistory = {};
+    if (rawHistory != null) {
+      final decoded = jsonDecode(rawHistory) as Map<String, dynamic>;
+      decoded.forEach((key, value) {
+        loadedHistory[key] = value as int;
+      });
+    }
+
+    final today = _todayKey();
+    final todayAmount = loadedHistory[today] ?? 0;
+
+    setState(() {
+      _userName = savedName;
+      _dailyGoal = savedGoal;
+      _reminderMinutes = savedMinutes;
+      _historyMap = loadedHistory;
+      _currentWater = todayAmount;
+      _celebratedToday = _currentWater >= _dailyGoal;
+    });
+  }
+
+  Future<void> _saveData() async {
+    final prefs = await SharedPreferences.getInstance();
+    _historyMap[_todayKey()] = _currentWater;
+
+    final sortedKeys = _historyMap.keys.toList()..sort((a, b) => b.compareTo(a));
+    if (sortedKeys.length > 30) {
+      for (final oldKey in sortedKeys.sublist(30)) {
+        _historyMap.remove(oldKey);
+      }
+    }
+
+    await prefs.setString('userName', _userName);
+    await prefs.setInt('dailyGoal', _dailyGoal);
+    await prefs.setInt('reminderMinutes', _reminderMinutes);
+    await prefs.setString('historyMap', jsonEncode(_historyMap));
+  }
+
+  @override
   void dispose() {
     _reminderTimer?.cancel();
     super.dispose();
+  }
+
+  void _startOrRestartTimer() {
+    _reminderTimer?.cancel();
+    if (_reminderOn) {
+      _reminderTimer = Timer.periodic(
+        Duration(minutes: _reminderMinutes),
+        (timer) => _triggerWaterAlarm(),
+      );
+    }
   }
 
   void _toggleReminder(bool value) {
     setState(() {
       _reminderOn = value;
     });
-    _reminderTimer?.cancel();
+    _startOrRestartTimer();
+
     if (_reminderOn) {
-      _reminderTimer = Timer.periodic(const Duration(hours: 1), (timer) {
-        _triggerWaterAlarm();
-      });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('⏰ Hourly water reminder turned ON!'),
-          duration: Duration(seconds: 2),
+        SnackBar(
+          content: Text('⏰ Reminder ON (${_formatIntervalLabel(_reminderMinutes)})!'),
+          duration: const Duration(seconds: 2),
         ),
       );
     }
@@ -120,38 +194,163 @@ class _HydrationHomePageState extends State<HydrationHomePage> {
       ),
     );
   }
-
-  void _editNameDialog() {
-    final TextEditingController nameController =
+  void _openSettingsDialog() {
+    final nameController =
         TextEditingController(text: _userName == 'Friend' ? '' : _userName);
+    int tempGoal = _dailyGoal;
+    int tempMinutes = _reminderMinutes;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('⚙️ Settings'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Your Name', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: nameController,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(
+                    hintText: 'e.g. Rahul, Priya',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  'Daily Water Limit: $tempGoal ml',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                Slider(
+                  value: tempGoal.toDouble(),
+                  min: 1000,
+                  max: 5000,
+                  divisions: 16,
+                  label: '$tempGoal ml',
+                  onChanged: (val) {
+                    setDialogState(() {
+                      tempGoal = val.round();
+                    });
+                  },
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Alarm Reminder Interval',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [30, 60, 120, 180].map((mins) {
+                    final label = mins == 30
+                        ? '30 mins'
+                        : mins == 60
+                            ? '1 hr'
+                            : '${mins ~/ 60} hrs';
+                    return ChoiceChip(
+                      label: Text(label),
+                      selected: tempMinutes == mins,
+                      onSelected: (selected) {
+                        if (selected) {
+                          setDialogState(() {
+                            tempMinutes = mins;
+                          });
+                        }
+                      },
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                setState(() {
+                  String entered = nameController.text.trim();
+                  _userName = entered.isEmpty ? 'Friend' : entered;
+                  _dailyGoal = tempGoal;
+                  _reminderMinutes = tempMinutes;
+                  _celebratedToday = _currentWater >= _dailyGoal;
+                });
+                _startOrRestartTimer();
+                _saveData();
+                Navigator.of(context).pop();
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _open30DayHistoryDialog() {
+    final today = DateTime.now();
+    final List<String> last30Dates = List.generate(30, (index) {
+      final d = today.subtract(Duration(days: index));
+      return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    });
+
+    int completedDays = last30Dates
+        .where((date) => (_historyMap[date] ?? 0) >= _dailyGoal)
+        .length;
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Enter Your Name'),
-        content: TextField(
-          controller: nameController,
-          autofocus: true,
-          textCapitalization: TextCapitalization.words,
-          decoration: const InputDecoration(
-            hintText: 'e.g. Rahul, Priya',
-            border: OutlineInputBorder(),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('📅 30-Day Tracker'),
+            Text(
+              'Goals Hit: $completedDays / 30 days',
+              style: TextStyle(fontSize: 13, color: Colors.green.shade700),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 320,
+          child: ListView.builder(
+            itemCount: last30Dates.length,
+            itemBuilder: (context, index) {
+              final dateStr = last30Dates[index];
+              final amount = _historyMap[dateStr] ?? 0;
+              final hit = amount >= _dailyGoal;
+              final label = index == 0 ? '$dateStr (Today)' : dateStr;
+
+              return ListTile(
+                dense: true,
+                leading: Icon(
+                  hit ? Icons.check_circle : Icons.radio_button_unchecked,
+                  color: hit ? Colors.green : Colors.grey,
+                ),
+                title: Text(label),
+                trailing: Text(
+                  '$amount / $_dailyGoal ml',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: hit ? Colors.green.shade700 : Colors.black87,
+                  ),
+                ),
+              );
+            },
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
           ElevatedButton(
-            onPressed: () {
-              setState(() {
-                String entered = nameController.text.trim();
-                _userName = entered.isEmpty ? 'Friend' : entered;
-              });
-              Navigator.of(context).pop();
-            },
-            child: const Text('Save'),
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
           ),
         ],
       ),
@@ -162,6 +361,7 @@ class _HydrationHomePageState extends State<HydrationHomePage> {
     setState(() {
       _currentWater += amount;
     });
+    _saveData();
 
     if (_currentWater >= _dailyGoal && !_celebratedToday) {
       _celebratedToday = true;
@@ -182,10 +382,10 @@ class _HydrationHomePageState extends State<HydrationHomePage> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              'You hit your 2,500 ml daily hydration goal! Keep up this awesome healthy streak.',
+            Text(
+              'You hit your $_dailyGoal ml daily hydration goal! Keep up this awesome healthy streak.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 16),
+              style: const TextStyle(fontSize: 16),
             ),
             const SizedBox(height: 16),
             Container(
@@ -219,6 +419,7 @@ class _HydrationHomePageState extends State<HydrationHomePage> {
       _currentWater = 0;
       _celebratedToday = false;
     });
+    _saveData();
   }
 
   void _nextTip() {
@@ -235,9 +436,18 @@ class _HydrationHomePageState extends State<HydrationHomePage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('HydroBuddy & Wellness'),
-        centerTitle: true,
+        title: const Text('HydroBuddy'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.calendar_month),
+            tooltip: '30-Day Tracker',
+            onPressed: _open30DayHistoryDialog,
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings),
+            tooltip: 'Settings',
+            onPressed: _openSettingsDialog,
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Reset Today',
@@ -261,8 +471,8 @@ class _HydrationHomePageState extends State<HydrationHomePage> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.edit, size: 20, color: Colors.blue),
-                  tooltip: 'Edit Name',
-                  onPressed: _editNameDialog,
+                  tooltip: 'Settings',
+                  onPressed: _openSettingsDialog,
                 ),
               ],
             ),
@@ -282,150 +492,4 @@ class _HydrationHomePageState extends State<HydrationHomePage> {
                           color: _reminderOn ? Colors.orange.shade800 : Colors.grey,
                         ),
                         const SizedBox(width: 8),
-                        const Text(
-                          'Hourly Reminder',
-                          style: TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                      ],
-                    ),
-                    Row(
-                      children: [
-                        TextButton(
-                          onPressed: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Testing alarm in 5 seconds...'),
-                                duration: Duration(seconds: 2),
-                              ),
-                            );
-                            Future.delayed(
-                              const Duration(seconds: 5),
-                              _triggerWaterAlarm,
-                            );
-                          },
-                          child: const Text('Test 5s'),
-                        ),
-                        Switch(
-                          value: _reminderOn,
-                          onChanged: _toggleReminder,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-                        if (goalReached)
-              Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.green.shade100,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Text(
-                  '🎉 Daily Target Completed!',
-                  style: TextStyle(
-                    color: Colors.green,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            Stack(
-              alignment: Alignment.center,
-              children: [
-                SizedBox(
-                  width: 175,
-                  height: 175,
-                  child: CircularProgressIndicator(
-                    value: progress,
-                    strokeWidth: 14,
-                    color: goalReached ? Colors.green : Colors.blue,
-                    backgroundColor: Colors.blue.shade100,
-                  ),
-                ),
-                Column(
-                  children: [
-                    Text(
-                      '$percentage%',
-                      style: TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                        color: goalReached ? Colors.green.shade700 : Colors.black,
-                      ),
-                    ),
-                    Text(
-                      '$_currentWater / $_dailyGoal ml',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.grey.shade700,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 18),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                ElevatedButton.icon(
-                  onPressed: () => _addWater(250),
-                  icon: const Icon(Icons.local_drink),
-                  label: const Text('+250 ml'),
-                ),
-                const SizedBox(width: 16),
-                ElevatedButton.icon(
-                  onPressed: () => _addWater(500),
-                  icon: const Icon(Icons.water_drop),
-                  label: const Text('+500 ml'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            Card(
-              color: Colors.blue.shade50,
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
                         Text(
-                          _dailyIdeas[_tipIndex]['category']!,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: _nextTip,
-                          child: const Text('Next Idea →'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _dailyIdeas[_tipIndex]['tip']!,
-                      style: const TextStyle(fontSize: 14, height: 1.4),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 14),
-            Text(
-              'General wellness & nutrition tips only — not medical advice.',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
