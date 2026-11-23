@@ -243,7 +243,7 @@ class _HydrationHomePageState extends State<HydrationHomePage> {
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
-                Wrap(
+                                Wrap(
                   spacing: 8,
                   runSpacing: 6,
                   children: [30, 60, 120, 180].map((mins) {
@@ -492,4 +492,14 @@ class _HydrationHomePageState extends State<HydrationHomePage> {
                           color: _reminderOn ? Colors.orange.shade800 : Colors.grey,
                         ),
                         const SizedBox(width: 8),
-                        Text(
+                                    const Text(
+              'General wellness & nutrition tips only — not medical advice.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
